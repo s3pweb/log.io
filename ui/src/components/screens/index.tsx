@@ -6,6 +6,8 @@ import { ActionTypes, State } from '../../reducers/types'
 import { MessageActions, MessageState } from '../../reducers/messages/types'
 import { ScreenActions, Screen as ScreenType, ScreenState } from '../../reducers/screens/types'
 
+import Ansi from "ansi-to-react";
+
 import './styles.scss'
 
 interface ScreenManagerProps {
@@ -68,9 +70,13 @@ const ScreenMessage: React.FC<ScreenMessageProps> = ({
   return (
     <div>
       {messageFilter && _parseMessageParts(message, messageFilter).map((part, i) =>
-        <span key={i} className={part.highlight ? 'highlight' : ''}>{part.text}</span>
+        <span key={i} className={part.highlight ? 'highlight' : ''}>          
+          <Ansi>
+          {part.text}
+          </Ansi>
+        </span>
       )}
-      {!messageFilter && message}
+      {!messageFilter && <Ansi>{message}</Ansi>}
     </div>
   )
 }
