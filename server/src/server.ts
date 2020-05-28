@@ -1,11 +1,18 @@
 import express from 'express'
+import bodyParser from 'body-parser'
 import basicAuth from 'express-basic-auth'
+import cors from 'cors'
+import requestIp from 'request-ip'
+
+import chalk from 'chalk'
+
 import http from 'http'
 import net from 'net'
 import path from 'path'
 import socketio from 'socket.io'
 import InputRegistry from './inputs'
 import { MessageHandlers, ServerConfig } from './types'
+
 
 // File path to UI app build artifacts (static JS/CSS/HTML)
 const UI_BUILD_PATH = process.env.LOGIO_SERVER_UI_BUILD_PATH
@@ -105,8 +112,41 @@ async function broadcastMessage(
  * Start message & web servers
  */
 async function main(config: ServerConfig): Promise<void> {
+
+  console.log('start...')
+
   // Create HTTP server w/ static file serving, socket.io bindings & basic auth
   const server = express()
+
+
+  server.use(bodyParser.urlencoded({ extended: true, limit: '15mb' }));
+  server.use(bodyParser.json({limit: '15mb'}));
+
+  server.use(cors())
+  server.use(requestIp.mw())
+
+  server.post('/logger', async (req, res) => {
+
+    let logs = req.body.logs ? req.body.logs : []
+
+    const ip = req.clientIp;
+
+    for (let log of logs) {
+      
+      let bufStr = `+msg|${ip}|${log.logger ? log.logger : '_' }|${log.count} [ ${log.level}  ]  - ${chalk.white(log.msg)}\0`
+   
+      await broadcastMessage(config, inputs, io, Buffer.from(bufStr, 'utf8'))
+      
+      if (log.stacktrace) {
+        bufStr = `+msg|${ip}|${log.logger ? log.logger : '_' }|${log.stacktrace}\0`
+        await broadcastMessage(config, inputs, io, Buffer.from(bufStr, 'utf8'))
+      }      
+    }
+    
+    res.end();
+  });
+
+
   const httpServer = new http.Server(server)
   const io = socketio(httpServer)
   const inputs = new InputRegistry()
@@ -132,6 +172,9 @@ See README for more examples.
   // Create TCP message server
   const messageServer = net.createServer(async (socket: net.Socket) => {
     socket.on('data', async (data: Buffer) => {
+
+      console.log('data=',data.toString())
+
       await broadcastMessage(config, inputs, io, data)
     })
   })

@@ -52,8 +52,13 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.8.7",
+    "@types/cors": "^2.8.6",
+    "@types/request-ip": "0.0.35",
+    "ansi-to-react": "^6.0.5",
+    "cors": "^2.8.5",
     "express": "^4.17.1",
     "express-basic-auth": "^1.2.0",
+    "request-ip": "^2.1.3",
     "socket.io": "^2.3.0"
   }
 }
