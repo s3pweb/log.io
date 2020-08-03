@@ -11,7 +11,7 @@ USER node
 RUN npm install --only=prod
 
 COPY --chown=node:node server/lib .
-COPY --chown=node:node server/config.json /home/node/config.json
+COPY --chown=node:node config.json /home/node/config.json
 
 EXPOSE 6688 
 EXPOSE 6689
