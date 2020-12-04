@@ -120,7 +120,7 @@ async function main(config: ServerConfig): Promise<void> {
 
 
   server.use(bodyParser.urlencoded({ extended: true, limit: '15mb' }));
-  server.use(bodyParser.json({limit: '15mb'}));
+  server.use(bodyParser.json({ limit: '15mb' }));
 
   server.use(cors())
   server.use(requestIp.mw())
@@ -132,20 +132,152 @@ async function main(config: ServerConfig): Promise<void> {
     const ip = req.clientIp;
 
     for (let log of logs) {
-      
-      let bufStr = `+msg|${ip}|${log.logger ? log.logger : '_' }|${log.count} [ ${log.level}  ]  - ${chalk.white(log.msg)}\0`
-   
+
+      console.log(log)
+
+      let logstashMsg = {
+
+        level: log.level,
+        count: log.count,
+        mobile: log.mobile,
+        child: log.logger,
+        '@timestamp': new Date().toISOString(),
+        'application': 'driver-office',
+        'tags': ['logio'],
+        'message': log.msg,
+        'ts': log.ts,
+        'stacktrace': log.stacktrace
+      }
+
+      pushToLogstash(logstashMsg)
+
+      let bufStr = `+msg|${(log.mobile?log.mobile.replace('+','')+'_':'')+ip}|${log.logger ? log.logger : '_'}|${log.count} [ ${log.level}  ]  - ${chalk.white(log.msg)}\0`
+
       await broadcastMessage(config, inputs, io, Buffer.from(bufStr, 'utf8'))
-      
+
       if (log.stacktrace) {
-        bufStr = `+msg|${ip}|${log.logger ? log.logger : '_' }|${log.stacktrace}\0`
+        bufStr = `+msg|${(log.mobile?log.mobile.replace('+','')+'_':'')+ip}|${log.logger ? log.logger : '_'}|${log.stacktrace}\0`
         await broadcastMessage(config, inputs, io, Buffer.from(bufStr, 'utf8'))
-      }      
+      }
     }
-    
+
     res.end();
   });
 
+  let logstashConnection: any = {
+    socket: null,
+    isConnected: false,
+    lastCreateConnectionDate: null,
+    createConnectionInProgress: false,
+    waitAfterError: 1,
+    buffer: []
+  }
+
+  function pushToLogstash(message: any) {
+
+    logstashConnection.buffer.push(message)
+    sendBufferToLogstash()
+
+
+  }
+
+  function sendBufferToLogstash() {
+    if (logstashConnection.isConnected === true) {
+      if (logstashConnection.buffer.length > 0) {
+
+        try {
+          let msg = logstashConnection.buffer.shift()
+          if (config.debug) {
+            console.log('emit tcp packet', msg)
+          }
+          logstashConnection.socket.write(JSON.stringify(msg) + '\n');
+        } catch (error) {
+          console.log('logstash :fail to write', error)
+        }
+      }
+
+      if (logstashConnection.buffer.length > 0) {
+        sendBufferToLogstash()
+      }
+    }
+    else {
+      connectToLogstash()
+    }
+  }
+
+  function connectToLogstash() {
+    const logHost: any = process.env.LOGSTASH_URL ?  process.env.LOGSTASH_URL : config.logstash.host
+      , logPort = 9998
+
+    console.log('Try to connect to logstash')
+
+    if (logstashConnection.lastCreateConnectionDate) {
+      let now = new Date()
+      var seconds = (now.getTime() - logstashConnection.lastCreateConnectionDate.getTime()) / 1000
+
+      if (seconds > 30) {
+        console.log('Retry logstash connection')
+        logstashConnection.createConnectionInProgress = false
+      }
+    }
+
+    if (logstashConnection.createConnectionInProgress === false) {
+
+      logstashConnection.createConnectionInProgress = true
+
+      logstashConnection.socket = net.createConnection({ host: logHost, port: logPort }, function () {
+
+        console.log('Connect to logstash : done')
+
+        var message = {
+          '@timestamp': new Date().toISOString(),
+          'tags': ['logio'],
+          'message': 'LOGIO : new logstash connection'
+        }
+
+
+        logstashConnection.createConnectionInProgress = false
+        logstashConnection.isConnected = true
+        logstashConnection.lastCreateConnectionDate = new Date()
+        logstashConnection.waitAfterError = 1
+
+        pushToLogstash(message)
+
+      })
+
+      function restartLogstashConnection() {
+
+        logstashConnection.createConnectionInProgress = false
+        logstashConnection.isConnected = false
+
+        setTimeout(() => {
+
+          logstashConnection.waitAfterError = logstashConnection.waitAfterError * 3
+
+          console.log(`next retry in ${logstashConnection.waitAfterError} ms`)
+
+          if (logstashConnection.waitAfterError > 300000) {
+            logstashConnection.waitAfterError = 300000
+          }
+
+          connectToLogstash()
+        }, logstashConnection.waitAfterError)
+      }
+
+      logstashConnection.socket.on('close', function () {
+        restartLogstashConnection()
+      }
+      )
+
+      logstashConnection.socket.on('error', function (err: any) {
+
+        console.log(err)
+        restartLogstashConnection()
+      });
+    }
+  }
+
+  connectToLogstash()
 
   const httpServer = new http.Server(server)
   const io = socketio(httpServer)
@@ -173,7 +305,7 @@ See README for more examples.
   const messageServer = net.createServer(async (socket: net.Socket) => {
     socket.on('data', async (data: Buffer) => {
 
-      console.log('data=',data.toString())
+      console.log('data=', data.toString())
 
       await broadcastMessage(config, inputs, io, data)
     })

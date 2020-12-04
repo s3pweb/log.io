@@ -1,0 +1,45 @@
+version: '3.6'
+
+networks:
+  proxy:
+    external: true
+
+services:
+  logio:
+    image: s3pweb/logio:0.0.4
+
+    networks:
+      - proxy
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.labels.backend == true]
+
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+
+      restart_policy:
+        # no / any / on-failure
+        condition: any
+        delay: 30s
+
+      resources:
+        limits:
+          memory: 1G
+
+      labels:
+        traefik.enable: 'true'
+        traefik.port: 6688
+        traefik.docker.network: proxy
+        traefik.frontend.rule: 'Host:logio.s3pweb.io'
+
+    environment:
+      LOGSTASH_URL: logstash-swarm
+
+        

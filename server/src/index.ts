@@ -10,7 +10,7 @@ const homedirConfigPathExists = fs.existsSync(homedirConfigPath)
 
 const CONFIG_PATH = process.env.LOGIO_SERVER_CONFIG_PATH
   || (homedirConfigPathExists && homedirConfigPath)
-  || path.resolve(__dirname, '../config.json')
+  || path.resolve(__dirname, './config.json')
 
 function loadConfig(configPath: string): ServerConfig {
   return JSON.parse(fs.readFileSync(configPath, { encoding: 'utf8' }))
